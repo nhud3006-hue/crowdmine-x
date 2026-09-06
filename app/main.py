@@ -4,8 +4,6 @@ import requests
 from datetime import datetime, timedelta
 import random
 import os
-import folium
-from streamlit_folium import st_folium
 
 # ===============================
 # CẤU HÌNH PAGE
@@ -27,7 +25,7 @@ def apply_css(theme):
     if theme == "dark":
         st.markdown("""
         <style>
-            body, .stApp {
+            .stApp {
                 background-color: #1a1a2e;
                 color: #e0e0e0;
             }
@@ -40,10 +38,6 @@ def apply_css(theme):
                 border-radius: 10px;
                 color: white;
             }
-            .stDataFrame, .stDataFrame > div {
-                background-color: #16213e;
-                color: white;
-            }
             h1, h2, h3, h4, h5, h6 {
                 color: #e0e0e0;
             }
@@ -52,7 +46,7 @@ def apply_css(theme):
     else:
         st.markdown("""
         <style>
-            body, .stApp {
+            .stApp {
                 background-color: #f5f7fa;
                 color: #1a1a2e;
             }
@@ -249,12 +243,11 @@ st.subheader("Hệ thống Cảnh báo Thiên tai Dây chuyền Thông minh")
 # ---- SIDEBAR ----
 with st.sidebar:
     st.header("📍 Khu vực")
-    region = st.selectbox("Chọn tỉnh/thành phố", list(CITY_COORDS.keys()), key="region")
-    days = st.slider("📅 Số ngày lấy dữ liệu động đất", 1, 30, 7, key="days")
-    min_mag = st.slider("📊 Độ lớn tối thiểu", 2.0, 6.0, 3.0, 0.5, key="min_mag")
+    region = st.selectbox("Chọn tỉnh/thành phố", list(CITY_COORDS.keys()))
+    days = st.slider("📅 Số ngày lấy dữ liệu động đất", 1, 30, 7)
+    min_mag = st.slider("📊 Độ lớn tối thiểu", 2.0, 6.0, 3.0, 0.5)
     
     st.divider()
-    # Nút toggle theme
     st.button("🌗 Chuyển chế độ sáng/tối", on_click=toggle_theme)
     st.caption(f"🔄 Cập nhật: {datetime.now().strftime('%H:%M %d/%m/%Y')}")
 
@@ -270,7 +263,7 @@ if weather:
     c3.metric("🌧️ Lượng mưa", f"{weather['precipitation']} mm")
     c4.metric("💨 Gió", f"{weather['wind_speed']} km/h" if weather['wind_speed'] else "N/A")
 else:
-    st.warning("⚠️ Không thể lấy dữ liệu thời tiết. Kiểm tra kết nối mạng.")
+    st.warning("⚠️ Không thể lấy dữ liệu thời tiết.")
 
 # ---- TABS ----
 tab1, tab2, tab3, tab4 = st.tabs([
@@ -279,7 +272,8 @@ tab1, tab2, tab3, tab4 = st.tabs([
     "📢 Báo cáo cộng đồng",
     "⚠️ Cảnh báo dây chuyền"
 ])
-# ---- TAB 1: Bảng điều khiển ----
+
+# ---- TAB 1 ----
 with tab1:
     st.header("📋 Động đất gần đây")
     with st.spinner("📡 Đang tải dữ liệu từ USGS..."):
@@ -305,37 +299,36 @@ with tab1:
     else:
         st.info("Không có sự kiện nào.")
 
-# ---- TAB 2: Bản đồ rủi ro ----
+# ---- TAB 2 ----
 with tab2:
-    st.header("🗺️ Bản đồ tương tác - Động đất và Báo cáo cộng đồng")
-    # Tạo map
-    m = folium.Map(location=[16.0, 108.0], zoom_start=6, tiles="OpenStreetMap")
-    # Thêm điểm động đất
-    for _, row in df_eq.iterrows():
-        folium.CircleMarker(
-            location=[row["latitude"], row["longitude"]],
-            radius=row["magnitude"] * 1.5,
-            popup=f"Độ lớn {row['magnitude']} - {row['place']}",
-            color="red",
-            fill=True,
-            fillColor="orange",
-            fillOpacity=0.6
-        ).add_to(m)
-    # Thêm các điểm báo cáo từ file CSV (nếu có)
+    st.header("🗺️ Bản đồ rủi ro")
+    # Lấy dữ liệu động đất để vẽ map
+    if df_eq is not None and not df_eq.empty:
+        map_df = df_eq[["latitude", "longitude", "magnitude"]].copy()
+        map_df.rename(columns={"magnitude": "size"}, inplace=True)
+        # Thêm báo cáo cộng đồng nếu có
+        try:
+            reports = pd.read_csv("reports.csv")
+            if not reports.empty and "latitude" in reports.columns and "longitude" in reports.columns:
+                reports_map = reports.dropna(subset=["latitude", "longitude"])
+                if not reports_map.empty:
+                    reports_map["size"] = 10  # kích thước cố định cho báo cáo
+                    map_df = pd.concat([map_df, reports_map[["latitude", "longitude", "size"]]], ignore_index=True)
+        except:
+            pass
+        st.map(map_df, size="size", zoom=6)
+    else:
+        st.info("Không có dữ liệu động đất để hiển thị bản đồ.")
+    
+    st.divider()
+    st.subheader("📋 Danh sách điểm rủi ro")
     try:
-        df_reports = pd.read_csv("reports.csv")
-        for _, row in df_reports.iterrows():
-            if not pd.isna(row["latitude"]) and not pd.isna(row["longitude"]):
-                folium.Marker(
-                    location=[row["latitude"], row["longitude"]],
-                    popup=f"{row['type']}: {row['description']}",
-                    icon=folium.Icon(color="blue", icon="info-sign")
-                ).add_to(m)
+        reports = pd.read_csv("reports.csv")
+        st.dataframe(reports[["time", "type", "location", "description"]].tail(10), use_container_width=True)
     except:
-        pass
-    st_folium(m, width=700, height=500)
+        st.info("Chưa có báo cáo nào từ cộng đồng.")
 
-# ---- TAB 3: Báo cáo cộng đồng ----
+# ---- TAB 3 ----
 with tab3:
     st.header("📢 Gửi báo cáo cộng đồng")
     with st.form("report_form"):
@@ -346,7 +339,6 @@ with tab3:
         lon = st.number_input("🧭 Kinh độ (nếu biết)", value=0.0, format="%.4f")
         submitted = st.form_submit_button("📤 Gửi báo cáo")
         if submitted and location and description:
-            # Lưu vào file CSV
             new_report = {
                 "time": datetime.now().strftime("%Y-%m-%d %H:%M"),
                 "type": report_type,
@@ -372,14 +364,12 @@ with tab3:
     except:
         st.info("Chưa có báo cáo nào. Hãy gửi báo cáo đầu tiên!")
 
-# ---- TAB 4: Cảnh báo dây chuyền ----
+# ---- TAB 4 ----
 with tab4:
     st.header("⚠️ Phân tích rủi ro dây chuyền")
-    # Dựa trên dữ liệu thời tiết và động đất để đưa ra cảnh báo
     if weather:
         rain = weather.get("precipitation", 0)
         wind = weather.get("wind_speed", 0)
-        # Logic đơn giản
         if rain > 50 or wind > 50:
             st.error("""
             🔴 **Cảnh báo Đỏ: Nguy cơ cao**
@@ -396,7 +386,6 @@ with tab4:
         else:
             st.info("🟢 **An toàn:** Không có nguy cơ đặc biệt.")
         
-        # Thông tin về động đất gần nhất
         if not df_eq.empty:
             latest = df_eq.iloc[0]
             if latest["magnitude"] > 5.0:
