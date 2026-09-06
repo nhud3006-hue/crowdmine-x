@@ -3,17 +3,6 @@ import pandas as pd
 import requests
 from datetime import datetime, timedelta
 import random
-import numpy as np
-import matplotlib.pyplot as plt
-import sys
-import os
-
-# Thêm đường dẫn để import module
-sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
-
-# Import model LSTM và class lấy dữ liệu thật
-from src.models.lstm_flood_model import FloodLSTM
-from src.data_fetchers.real_water_data import RealWaterFetcher
 
 # ===============================
 # CLASS LẤY DỮ LIỆU THỜI TIẾT
@@ -53,7 +42,7 @@ class WeatherFetcher:
             return None
 
 # ===============================
-# CLASS USGS
+# CLASS LẤY DỮ LIỆU ĐỘNG ĐẤT USGS
 # ===============================
 class USGSFetcher:
     def __init__(self):
@@ -93,7 +82,7 @@ class USGSFetcher:
             return pd.DataFrame()
 
 # ===============================
-# CLASS NASA EONET
+# CLASS LẤY DỮ LIỆU NASA EONET
 # ===============================
 class EONETFetcher:
     def __init__(self):
@@ -141,72 +130,58 @@ def get_mock_earthquakes():
     return pd.DataFrame(data)
 
 # ===============================
-# DANH SÁCH TỈNH THÀNH VIỆT NAM (63 TỈNH THÀNH) VỚI TỌA ĐỘ
+# TỌA ĐỘ TỈNH THÀNH (MỞ RỘNG 44 TỈNH)
 # ===============================
 CITY_COORDS = {
-    "An Giang": {"lat": 10.5, "lon": 105.1},
-    "Bà Rịa - Vũng Tàu": {"lat": 10.4, "lon": 107.1},
-    "Bắc Giang": {"lat": 21.3, "lon": 106.2},
-    "Bắc Kạn": {"lat": 22.1, "lon": 105.8},
-    "Bạc Liêu": {"lat": 9.3, "lon": 105.7},
-    "Bắc Ninh": {"lat": 21.2, "lon": 106.1},
-    "Bến Tre": {"lat": 10.2, "lon": 106.4},
-    "Bình Định": {"lat": 13.8, "lon": 109.1},
-    "Bình Dương": {"lat": 11.1, "lon": 106.6},
-    "Bình Phước": {"lat": 11.6, "lon": 106.9},
-    "Bình Thuận": {"lat": 11.1, "lon": 108.1},
-    "Cà Mau": {"lat": 9.2, "lon": 105.2},
-    "Cần Thơ": {"lat": 10.0, "lon": 105.7},
-    "Cao Bằng": {"lat": 22.7, "lon": 106.3},
-    "Đà Nẵng": {"lat": 16.1, "lon": 108.2},
-    "Đắk Lắk": {"lat": 12.7, "lon": 108.0},
-    "Đắk Nông": {"lat": 12.0, "lon": 107.7},
-    "Điện Biên": {"lat": 21.4, "lon": 103.0},
-    "Đồng Nai": {"lat": 11.0, "lon": 107.2},
-    "Đồng Tháp": {"lat": 10.5, "lon": 105.6},
-    "Gia Lai": {"lat": 13.8, "lon": 108.2},
-    "Hà Giang": {"lat": 22.8, "lon": 104.9},
-    "Hà Nam": {"lat": 20.6, "lon": 105.9},
-    "Hà Nội": {"lat": 21.0, "lon": 105.9},
-    "Hà Tĩnh": {"lat": 18.3, "lon": 105.9},
-    "Hải Dương": {"lat": 20.9, "lon": 106.3},
-    "Hải Phòng": {"lat": 20.8, "lon": 106.7},
-    "Hậu Giang": {"lat": 9.8, "lon": 105.6},
-    "Hòa Bình": {"lat": 20.8, "lon": 105.3},
-    "Hưng Yên": {"lat": 20.6, "lon": 106.1},
-    "Khánh Hòa": {"lat": 12.2, "lon": 109.1},
-    "Kiên Giang": {"lat": 10.0, "lon": 105.0},
-    "Kon Tum": {"lat": 14.3, "lon": 108.0},
-    "Lai Châu": {"lat": 22.4, "lon": 103.4},
-    "Lâm Đồng": {"lat": 11.9, "lon": 108.4},
-    "Lạng Sơn": {"lat": 21.8, "lon": 106.8},
-    "Lào Cai": {"lat": 22.5, "lon": 103.9},
-    "Long An": {"lat": 10.6, "lon": 106.4},
-    "Nam Định": {"lat": 20.4, "lon": 106.2},
-    "Nghệ An": {"lat": 19.2, "lon": 105.6},
-    "Ninh Bình": {"lat": 20.2, "lon": 105.9},
-    "Ninh Thuận": {"lat": 11.6, "lon": 108.9},
-    "Phú Thọ": {"lat": 21.4, "lon": 105.2},
-    "Phú Yên": {"lat": 13.1, "lon": 109.2},
-    "Quảng Bình": {"lat": 17.5, "lon": 106.6},
-    "Quảng Nam": {"lat": 15.6, "lon": 108.2},
-    "Quảng Ngãi": {"lat": 15.1, "lon": 108.8},
-    "Quảng Ninh": {"lat": 21.0, "lon": 107.3},
-    "Quảng Trị": {"lat": 16.8, "lon": 107.1},
-    "Sóc Trăng": {"lat": 9.6, "lon": 105.9},
-    "Sơn La": {"lat": 21.3, "lon": 103.9},
-    "Tây Ninh": {"lat": 11.3, "lon": 106.1},
-    "Thái Bình": {"lat": 20.4, "lon": 106.3},
-    "Thái Nguyên": {"lat": 21.6, "lon": 105.8},
-    "Thanh Hóa": {"lat": 19.8, "lon": 105.8},
-    "Thừa Thiên Huế": {"lat": 16.5, "lon": 107.6},
-    "Tiền Giang": {"lat": 10.4, "lon": 106.2},
-    "TP Hồ Chí Minh": {"lat": 10.8, "lon": 106.6},
-    "Trà Vinh": {"lat": 9.9, "lon": 106.3},
-    "Tuyên Quang": {"lat": 21.8, "lon": 105.2},
-    "Vĩnh Long": {"lat": 10.3, "lon": 105.9},
-    "Vĩnh Phúc": {"lat": 21.3, "lon": 105.6},
-    "Yên Bái": {"lat": 21.7, "lon": 104.9}
+    "Hà Nội": {"lat": 21.0285, "lon": 105.8542},
+    "Hải Phòng": {"lat": 20.8449, "lon": 106.6881},
+    "Hải Dương": {"lat": 20.9409, "lon": 106.3133},
+    "Hưng Yên": {"lat": 20.6464, "lon": 106.0511},
+    "Nam Định": {"lat": 20.4333, "lon": 106.1667},
+    "Thái Bình": {"lat": 20.4461, "lon": 106.3369},
+    "Ninh Bình": {"lat": 20.2500, "lon": 105.9667},
+    "Điện Biên": {"lat": 21.3833, "lon": 103.0167},
+    "Sơn La": {"lat": 21.3167, "lon": 103.9167},
+    "Lào Cai": {"lat": 22.4833, "lon": 103.9667},
+    "Yên Bái": {"lat": 21.7000, "lon": 104.8667},
+    "Thái Nguyên": {"lat": 21.5944, "lon": 105.8483},
+    "Bắc Giang": {"lat": 21.2667, "lon": 106.2000},
+    "Quảng Ninh": {"lat": 20.9500, "lon": 107.0833},
+    "Thanh Hóa": {"lat": 19.8000, "lon": 105.7667},
+    "Nghệ An": {"lat": 18.6667, "lon": 105.6667},
+    "Hà Tĩnh": {"lat": 18.3333, "lon": 105.9000},
+    "Quảng Bình": {"lat": 17.4667, "lon": 106.6000},
+    "Quảng Trị": {"lat": 16.7500, "lon": 107.1833},
+    "Huế": {"lat": 16.4637, "lon": 107.5909},
+    "Đà Nẵng": {"lat": 16.0544, "lon": 108.2022},
+    "Quảng Nam": {"lat": 15.5394, "lon": 108.0190},
+    "Quảng Ngãi": {"lat": 15.1167, "lon": 108.8000},
+    "Bình Định": {"lat": 13.7667, "lon": 109.2333},
+    "Phú Yên": {"lat": 13.0833, "lon": 109.3000},
+    "Nha Trang": {"lat": 12.2388, "lon": 109.1967},
+    "Ninh Thuận": {"lat": 11.5667, "lon": 108.9833},
+    "Bình Thuận": {"lat": 10.9333, "lon": 108.1000},
+    "Kon Tum": {"lat": 14.3493, "lon": 108.0000},
+    "Gia Lai": {"lat": 13.9833, "lon": 108.0000},
+    "Đắk Lắk": {"lat": 12.6667, "lon": 108.0500},
+    "Đắk Nông": {"lat": 12.0000, "lon": 107.7000},
+    "Lâm Đồng (Đà Lạt)": {"lat": 11.9404, "lon": 108.4583},
+    "TP.HCM": {"lat": 10.8231, "lon": 106.6297},
+    "Bà Rịa - Vũng Tàu": {"lat": 10.3500, "lon": 107.0667},
+    "Bình Dương": {"lat": 11.0333, "lon": 106.6667},
+    "Đồng Nai": {"lat": 10.9500, "lon": 107.0833},
+    "Tây Ninh": {"lat": 11.3167, "lon": 106.1333},
+    "Cần Thơ": {"lat": 10.0452, "lon": 105.7469},
+    "Long An": {"lat": 10.5333, "lon": 106.4167},
+    "Tiền Giang": {"lat": 10.3667, "lon": 106.3667},
+    "Bến Tre": {"lat": 10.2333, "lon": 106.3833},
+    "Vĩnh Long": {"lat": 10.2500, "lon": 106.0000},
+    "Đồng Tháp": {"lat": 10.4500, "lon": 105.6333},
+    "An Giang": {"lat": 10.3833, "lon": 105.4167},
+    "Kiên Giang": {"lat": 10.0167, "lon": 105.0833},
+    "Sóc Trăng": {"lat": 9.6000, "lon": 105.9667},
+    "Bạc Liêu": {"lat": 9.2833, "lon": 105.7167},
+    "Cà Mau": {"lat": 9.1833, "lon": 105.1500},
 }
 
 # ===============================
@@ -239,17 +214,16 @@ else:
     st.warning("⚠️ Không thể lấy dữ liệu thời tiết.")
 
 # ===============================
-# TABS
+# TABS (Không LSTM)
 # ===============================
-tab1, tab2, tab3, tab4, tab5 = st.tabs([
+tab1, tab2, tab3, tab4 = st.tabs([
     "📊 Bảng điều khiển",
     "🗺️ Bản đồ rủi ro",
     "📢 Báo cáo cộng đồng",
-    "⚠️ Cảnh báo dây chuyền",
-    "🌊 Dự báo lũ LSTM"
+    "⚠️ Cảnh báo dây chuyền"
 ])
 
-# ---- TAB 1: Bảng điều khiển ----
+# ---- TAB 1 ----
 with tab1:
     st.header("📋 Động đất gần đây")
     with st.spinner("📡 Đang tải dữ liệu từ USGS..."):
@@ -274,26 +248,19 @@ with tab1:
     else:
         st.info("Không có sự kiện nào.")
 
-# ---- TAB 2: Bản đồ ----
+# ---- TAB 2 ----
 with tab2:
     st.header("🗺️ Bản đồ rủi ro")
-    # Sử dụng danh sách tỉnh thành đã có
-    map_data = pd.DataFrame([
-        {"city": "Hà Nội", "lat": 21.0, "lon": 105.9, "risk": 3},
-        {"city": "Đà Nẵng", "lat": 16.1, "lon": 108.2, "risk": 4},
-        {"city": "TP Hồ Chí Minh", "lat": 10.8, "lon": 106.6, "risk": 2},
-        {"city": "Huế", "lat": 16.5, "lon": 107.6, "risk": 5},
-        {"city": "Kon Tum", "lat": 14.3, "lon": 108.0, "risk": 4},
-        {"city": "Đà Lạt", "lat": 11.9, "lon": 108.4, "risk": 2},
-        {"city": "Hải Phòng", "lat": 20.8, "lon": 106.7, "risk": 3},
-        {"city": "Cần Thơ", "lat": 10.0, "lon": 105.7, "risk": 2},
-        {"city": "Quảng Nam", "lat": 15.6, "lon": 108.2, "risk": 4},
-        {"city": "Thanh Hóa", "lat": 19.8, "lon": 105.8, "risk": 3}
-    ])
+    map_data = pd.DataFrame({
+        "lat": [21.0285, 16.0544, 10.8231, 16.4637, 14.3493],
+        "lon": [105.8542, 108.2022, 106.6297, 107.5909, 108.0000],
+        "city": ["Hà Nội", "Đà Nẵng", "TP.HCM", "Huế", "Kon Tum"],
+        "risk": [3, 4, 2, 5, 4]
+    })
     st.map(map_data, size="risk", zoom=6)
     st.dataframe(map_data, use_container_width=True)
 
-# ---- TAB 3: Báo cáo cộng đồng ----
+# ---- TAB 3 ----
 with tab3:
     st.header("📢 Báo cáo cộng đồng")
     with st.form("report_form"):
@@ -305,7 +272,7 @@ with tab3:
             st.success("✅ Cảm ơn bạn!")
             st.balloons()
 
-# ---- TAB 4: Cảnh báo dây chuyền ----
+# ---- TAB 4 ----
 with tab4:
     st.header("⚠️ Dự báo dây chuyền")
     st.error("""
@@ -321,76 +288,4 @@ with tab4:
     🟡 **Cảnh báo Vàng: Động đất 4.2 tại Kon Tum**
     - Nguy cơ dư chấn: 40% trong 48h.
     """)
-
-# ---- TAB 5: DỰ BÁO LŨ LSTM ----
-with tab5:
-    st.header("🌊 Dự báo mực nước sông bằng LSTM")
-    st.markdown("Mô hình dự báo chuỗi thời gian dựa trên dữ liệu lịch sử (thật từ NOAA hoặc mô phỏng).")
-    
-    if st.button("🔄 Tải dữ liệu thật và huấn luyện mô hình"):
-        with st.spinner("📡 Đang tải dữ liệu thủy văn từ NOAA..."):
-            fetcher = RealWaterFetcher()
-            df = fetcher.fetch_water_level(days=365)
-            if df is not None and not df.empty:
-                st.session_state['flood_data'] = df
-                st.success(f"✅ Đã tải {len(df)} dòng dữ liệu (dữ liệu thật nếu có, hoặc mô phỏng)")
-            else:
-                st.error("❌ Không thể tải dữ liệu.")
-                st.stop()
-        
-        with st.spinner("🧠 Đang huấn luyện mô hình LSTM..."):
-            try:
-                lstm = FloodLSTM(lookback=10, n_features=1)
-                X, y = lstm.prepare_data(df, target_col='water_level')
-                split = int(0.8 * len(X))
-                X_train, X_val = X[:split], X[split:]
-                y_train, y_val = y[:split], y[split:]
-                lstm.build_model(input_shape=(lstm.lookback, 1))
-                history = lstm.train(X_train, y_train, X_val, y_val, epochs=50, batch_size=32)
-                st.session_state['lstm_model'] = lstm
-                st.session_state['lstm_trained'] = True
-                st.session_state['flood_data'] = df
-                last_seq = X[-1]
-                preds = lstm.predict_future(last_seq, steps=7)
-                st.session_state['forecast_7d'] = preds
-                st.success("✅ Huấn luyện hoàn tất! Xem kết quả dưới đây.")
-            except Exception as e:
-                st.error(f"❌ Lỗi huấn luyện: {e}")
-                st.info("💡 Hãy đảm bảo đã cài đặt TensorFlow và các thư viện cần thiết.")
-                st.stop()
-    
-    if st.session_state.get('lstm_trained', False):
-        df_hist = st.session_state['flood_data']
-        preds = st.session_state['forecast_7d']
-        fig, ax = plt.subplots(figsize=(10, 5))
-        ax.plot(df_hist['date'][-30:], df_hist['water_level'][-30:], label='Lịch sử (30 ngày gần nhất)', color='blue')
-        last_date = df_hist['date'].iloc[-1]
-        future_dates = [last_date + timedelta(days=i+1) for i in range(7)]
-        ax.plot(future_dates, preds, label='Dự báo 7 ngày', color='red', marker='o', linestyle='--')
-        ax.set_xlabel('Ngày')
-        ax.set_ylabel('Mực nước (m)')
-        ax.set_title('Dự báo mực nước sông (LSTM) - Dữ liệu từ NOAA')
-        ax.legend()
-        ax.grid(True)
-        st.pyplot(fig)
-        forecast_df = pd.DataFrame({
-            'Ngày': [d.strftime('%d/%m/%Y') for d in future_dates],
-            'Mực nước dự báo (m)': [round(p, 2) for p in preds]
-        })
-        st.dataframe(forecast_df, use_container_width=True)
-        max_level = max(preds)
-        avg_level = np.mean(preds)
-        st.subheader("📊 Đánh giá nguy cơ lũ")
-        col1, col2 = st.columns(2)
-        with col1:
-            st.metric("📈 Mực nước cao nhất", f"{max_level:.2f} m")
-            st.metric("📊 Mực nước trung bình", f"{avg_level:.2f} m")
-        with col2:
-            if max_level > 8.0:
-                st.error("🔴 Cảnh báo: Nguy cơ lũ lớn!")
-            elif max_level > 6.5:
-                st.warning("🟡 Cảnh báo: Nguy cơ ngập lụt!")
-            else:
-                st.success("🟢 An toàn.")
-    else:
-        st.info("💡 Nhấn nút bên trên để tải dữ liệu thật và huấn luyện mô hình LSTM.")
+    st.info("🟢 Các khu vực khác: An toàn.")
