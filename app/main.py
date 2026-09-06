@@ -18,11 +18,10 @@ st.subheader("Hệ thống Cảnh báo Thiên tai Dây chuyền với AI và C�
 # ===============================
 @st.cache_data(ttl=600)
 def fetch_real_earthquakes(days=7, min_magnitude=4.0):
-    """Lấy dữ liệu động đất thật từ USGS (toàn cầu, lọc khu vực Đông Nam Á)"""
+    """Lấy dữ liệu động đất thật từ USGS (khu vực Đông Nam Á)"""
     end_date = datetime.now()
     start_date = end_date - timedelta(days=days)
     
-    # Khu vực Đông Nam Á (mở rộng hơn)
     params = {
         "format": "geojson",
         "starttime": start_date.strftime("%Y-%m-%d"),
@@ -47,16 +46,20 @@ def fetch_real_earthquakes(days=7, min_magnitude=4.0):
             props = feature["properties"]
             geom = feature["geometry"]
             events.append({
-                "Thời gian": datetime.fromtimestamp(props["time"] / 1000).strftime("%Y-%m-%d %H:%M"),
-                "Vị trí": props.get("place", "Unknown"),
-                "Độ lớn": props.get("mag", 0),
-                "Độ sâu (km)": round(geom["coordinates"][2], 1),
-                "Vĩ độ": geom["coordinates"][1],
-                "Kinh độ": geom["coordinates"][0],
-                "Tsunami": "Có" if props.get("tsunami", 0) == 1 else "Không"
+                "time": datetime.fromtimestamp(props["time"] / 1000),
+                "place": props.get("place", "Unknown"),
+                "mag": props.get("mag", 0),
+                "depth": round(geom["coordinates"][2], 1),
+                "lat": geom["coordinates"][1],
+                "lon": geom["coordinates"][0],
+                "tsunami": "Có" if props.get("tsunami", 0) == 1 else "Không"
             })
-        return pd.DataFrame(events)
-    except:
+        df = pd.DataFrame(events)
+        if not df.empty:
+            df = df.sort_values("time", ascending=False)
+        return df
+    except Exception as e:
+        st.error(f"Lỗi khi lấy dữ liệu: {e}")
         return pd.DataFrame()
 
 # ===============================
@@ -64,7 +67,6 @@ def fetch_real_earthquakes(days=7, min_magnitude=4.0):
 # ===============================
 @st.cache_data(ttl=600)
 def fetch_weather_forecast(lat, lon, days=7):
-    """Lấy dữ liệu dự báo thời tiết 7 ngày từ Open-Meteo"""
     url = "https://api.open-meteo.com/v1/forecast"
     params = {
         "latitude": lat,
@@ -78,11 +80,11 @@ def fetch_weather_forecast(lat, lon, days=7):
         data = response.json()
         daily = data.get("daily", {})
         df = pd.DataFrame({
-            "Ngày": pd.to_datetime(daily.get("time", [])),
-            "Nhiệt độ max (°C)": daily.get("temperature_2m_max", []),
-            "Nhiệt độ min (°C)": daily.get("temperature_2m_min", []),
-            "Lượng mưa (mm)": daily.get("precipitation_sum", []),
-            "Gió max (km/h)": daily.get("wind_speed_10m_max", [])
+            "date": pd.to_datetime(daily.get("time", [])),
+            "temp_max": daily.get("temperature_2m_max", []),
+            "temp_min": daily.get("temperature_2m_min", []),
+            "precipitation": daily.get("precipitation_sum", []),
+            "wind_max": daily.get("wind_speed_10m_max", [])
         })
         return df
     except:
@@ -120,7 +122,7 @@ tab1, tab2, tab3, tab4 = st.tabs([
 ])
 
 # ===============================
-# TAB 1: BẢNG ĐIỀU KHIỂN
+# TAB 1
 # ===============================
 with tab1:
     st.header("📋 Động đất thực tế gần đây (Đông Nam Á)")
@@ -129,90 +131,71 @@ with tab1:
         df = fetch_real_earthquakes(days=days, min_magnitude=min_mag)
     
     if df.empty:
-        st.warning("⚠️ Không có dữ liệu động đất thật trong khoảng thời gian này.")
-        st.info("💡 Thử giảm 'Độ lớn tối thiểu' hoặc tăng số ngày.")
+        st.warning("Không có dữ liệu động đất thật.")
     else:
-        # Bảng dữ liệu
-        st.dataframe(df, use_container_width=True)
-        
-        # Thống kê
+        st.dataframe(df[["time", "place", "mag", "depth", "tsunami"]], use_container_width=True)
         col1, col2, col3 = st.columns(3)
-        with col1:
-            st.metric("Tổng số trận", len(df))
-        with col2:
-            st.metric("Độ lớn TB", f"{df['Độ lớn'].mean():.1f}")
-        with col3:
-            st.metric("Lớn nhất", f"{df['Độ lớn'].max():.1f}")
-        
-        # Biểu đồ phân bố độ lớn
-        st.subheader("📊 Phân bố độ lớn")
-        fig = px.histogram(df, x="Độ lớn", nbins=10, title="Biểu đồ tần suất động đất theo độ lớn")
-        st.plotly_chart(fig, use_container_width=True)
+        col1.metric("Tổng số trận", len(df))
+        col2.metric("Độ lớn TB", f"{df['mag'].mean():.1f}")
+        col3.metric("Lớn nhất", f"{df['mag'].max():.1f}")
 
 # ===============================
-# TAB 2: BẢN ĐỒ ĐỘNG ĐẤT
+# TAB 2
 # ===============================
 with tab2:
-    st.header("🗺️ Bản đồ động đất thế giới (gần đây)")
-    
+    st.header("🗺️ Bản đồ động đất")
     if not df.empty:
         fig = px.scatter_mapbox(
             df,
-            lat="Vĩ độ",
-            lon="Kinh độ",
-            hover_name="Vị trí",
-            hover_data={"Độ lớn": True, "Độ sâu (km)": True},
-            color="Độ lớn",
-            size="Độ lớn",
+            lat="lat",
+            lon="lon",
+            hover_name="place",
+            hover_data={"mag": True, "depth": True},
+            color="mag",
+            size="mag",
             color_continuous_scale="Viridis",
             mapbox_style="open-street-map",
             zoom=2,
-            title="Các trận động đất trong khu vực Đông Nam Á"
+            title="Vị trí các trận động đất"
         )
+        fig.update_layout(margin=dict(l=0, r=0, t=30, b=0))
         st.plotly_chart(fig, use_container_width=True)
     else:
         st.info("Không có dữ liệu để hiển thị bản đồ.")
 
 # ===============================
-# TAB 3: DỰ BÁO THỜI TIẾT 7 NGÀY
+# TAB 3
 # ===============================
 with tab3:
     st.header(f"📈 Dự báo thời tiết 7 ngày tại {region}")
-    
-    with st.spinner("Đang tải dữ liệu thời tiết..."):
+    with st.spinner("Đang tải..."):
         weather_df = fetch_weather_forecast(coords["lat"], coords["lon"], days=7)
-    
     if weather_df.empty:
-        st.warning("Không thể lấy dữ liệu thời tiết.")
+        st.warning("Không lấy được dữ liệu thời tiết.")
     else:
-        # Biểu đồ nhiệt độ
         fig_temp = go.Figure()
         fig_temp.add_trace(go.Scatter(
-            x=weather_df["Ngày"],
-            y=weather_df["Nhiệt độ max (°C)"],
+            x=weather_df["date"],
+            y=weather_df["temp_max"],
             mode="lines+markers",
             name="Max",
             line=dict(color="red")
         ))
         fig_temp.add_trace(go.Scatter(
-            x=weather_df["Ngày"],
-            y=weather_df["Nhiệt độ min (°C)"],
+            x=weather_df["date"],
+            y=weather_df["temp_min"],
             mode="lines+markers",
             name="Min",
             line=dict(color="blue")
         ))
         fig_temp.update_layout(title="Nhiệt độ dự báo", xaxis_title="Ngày", yaxis_title="°C")
         st.plotly_chart(fig_temp, use_container_width=True)
-        
-        # Biểu đồ mưa
-        fig_rain = px.bar(weather_df, x="Ngày", y="Lượng mưa (mm)", title="Lượng mưa dự báo")
+
+        fig_rain = px.bar(weather_df, x="date", y="precipitation", title="Lượng mưa dự báo")
         st.plotly_chart(fig_rain, use_container_width=True)
-        
-        # Bảng dữ liệu
-        st.dataframe(weather_df, use_container_width=True)
 
 # ===============================
-# TAB 4: BÁO CÁO CỘNG ĐỒNG
+# TAB 4
 # ===============================
 with tab4:
     st.header("📢 Báo cáo cộng đồng")
@@ -222,5 +205,5 @@ with tab4:
         description = st.text_area("📝 Mô tả")
         submitted = st.form_submit_button("Gửi báo cáo")
         if submitted and location and description:
-            st.success("✅ Cảm ơn bạn! Báo cáo đã được gửi.")
+            st.success("✅ Cảm ơn bạn!")
             st.balloons()
