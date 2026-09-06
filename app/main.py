@@ -3,72 +3,133 @@ import pandas as pd
 import requests
 from datetime import datetime, timedelta
 import random
+import os
+import folium
+from streamlit_folium import st_folium
 
 # ===============================
-# CLASS LẤY DỮ LIỆU THỜI TIẾT
+# CẤU HÌNH PAGE
+# ===============================
+st.set_page_config(page_title="CrowdMine-X Pro", page_icon="🌍", layout="wide")
+
+# Khởi tạo theme (mặc định light)
+if "theme" not in st.session_state:
+    st.session_state.theme = "light"
+
+# Hàm toggle theme
+def toggle_theme():
+    st.session_state.theme = "dark" if st.session_state.theme == "light" else "light"
+
+# ===============================
+# CSS TUỲ CHỈNH (Dark/Light)
+# ===============================
+def apply_css(theme):
+    if theme == "dark":
+        st.markdown("""
+        <style>
+            body, .stApp {
+                background-color: #1a1a2e;
+                color: #e0e0e0;
+            }
+            .sidebar .sidebar-content {
+                background-color: #16213e;
+            }
+            .stMetric {
+                background-color: #0f3460;
+                padding: 10px;
+                border-radius: 10px;
+                color: white;
+            }
+            .stDataFrame, .stDataFrame > div {
+                background-color: #16213e;
+                color: white;
+            }
+            h1, h2, h3, h4, h5, h6 {
+                color: #e0e0e0;
+            }
+        </style>
+        """, unsafe_allow_html=True)
+    else:
+        st.markdown("""
+        <style>
+            body, .stApp {
+                background-color: #f5f7fa;
+                color: #1a1a2e;
+            }
+            .sidebar .sidebar-content {
+                background-color: #ffffff;
+            }
+            .stMetric {
+                background-color: #e8f0fe;
+                padding: 10px;
+                border-radius: 10px;
+                color: #1a1a2e;
+            }
+        </style>
+        """, unsafe_allow_html=True)
+
+apply_css(st.session_state.theme)
+
+# ===============================
+# CLASS LẤY DỮ LIỆU
 # ===============================
 class WeatherFetcher:
     def __init__(self):
         self.base_url = "https://api.open-meteo.com/v1/forecast"
     
-    def get_current_weather(self, latitude, longitude):
+    def get_current_weather(self, lat, lon):
         params = {
-            "latitude": latitude,
-            "longitude": longitude,
+            "latitude": lat,
+            "longitude": lon,
             "current_weather": True,
             "hourly": "temperature_2m,relative_humidity_2m,precipitation,wind_speed_10m",
             "timezone": "Asia/Ho_Chi_Minh",
             "forecast_days": 1
         }
         try:
-            response = requests.get(self.base_url, params=params, timeout=10)
-            data = response.json()
+            r = requests.get(self.base_url, params=params, timeout=10)
+            data = r.json()
             current = data.get("current_weather", {})
             hourly = data.get("hourly", {})
             now = datetime.now().hour
             idx = min(now, len(hourly.get("temperature_2m", [])) - 1) if hourly else 0
-            temperature = hourly["temperature_2m"][idx] if "temperature_2m" in hourly else current.get("temperature")
-            humidity = hourly["relative_humidity_2m"][idx] if "relative_humidity_2m" in hourly else None
-            precipitation = hourly["precipitation"][idx] if "precipitation" in hourly else 0
-            wind_speed = hourly["wind_speed_10m"][idx] if "wind_speed_10m" in hourly else current.get("windspeed")
+            temp = hourly["temperature_2m"][idx] if "temperature_2m" in hourly else current.get("temperature")
+            hum = hourly["relative_humidity_2m"][idx] if "relative_humidity_2m" in hourly else None
+            rain = hourly["precipitation"][idx] if "precipitation" in hourly else 0
+            wind = hourly["wind_speed_10m"][idx] if "wind_speed_10m" in hourly else current.get("windspeed")
             return {
-                "temperature": temperature,
-                "precipitation": precipitation,
-                "humidity": humidity,
-                "wind_speed": wind_speed,
+                "temperature": temp,
+                "precipitation": rain,
+                "humidity": hum,
+                "wind_speed": wind,
                 "time": current.get("time", datetime.now().strftime("%Y-%m-%d %H:%M"))
             }
         except:
             return None
 
-# ===============================
-# CLASS LẤY DỮ LIỆU ĐỘNG ĐẤT USGS
-# ===============================
 class USGSFetcher:
     def __init__(self):
         self.base_url = "https://earthquake.usgs.gov/fdsnws/event/1/query"
     
-    def fetch_earthquakes(self, days=7, min_magnitude=3.0):
-        end_date = datetime.now()
-        start_date = end_date - timedelta(days=days)
+    def fetch_earthquakes(self, days=7, min_mag=3.0):
+        end = datetime.now()
+        start = end - timedelta(days=days)
         params = {
             "format": "geojson",
-            "starttime": start_date.strftime("%Y-%m-%d"),
-            "endtime": end_date.strftime("%Y-%m-%d"),
-            "minmagnitude": min_magnitude,
-            "minlatitude": 8.0,
-            "maxlatitude": 24.0,
-            "minlongitude": 102.0,
-            "maxlongitude": 110.0,
+            "starttime": start.strftime("%Y-%m-%d"),
+            "endtime": end.strftime("%Y-%m-%d"),
+            "minmagnitude": min_mag,
+            "minlatitude": 8.0, "maxlatitude": 24.0,
+            "minlongitude": 102.0, "maxlongitude": 110.0,
             "orderby": "time"
         }
         try:
-            response = requests.get(self.base_url, params=params, timeout=10)
-            data = response.json()
+            r = requests.get(self.base_url, params=params, timeout=10)
+            data = r.json()
             events = []
-            for feature in data.get("features", []):
-                props = feature["properties"]
-                geom = feature["geometry"]
+            for f in data.get("features", []):
+                props = f["properties"]
+                geom = f["geometry"]
                 events.append({
                     "time": datetime.fromtimestamp(props["time"] / 1000),
                     "place": props.get("place", "Unknown"),
@@ -81,9 +142,6 @@ class USGSFetcher:
         except:
             return pd.DataFrame()
 
-# ===============================
-# CLASS LẤY DỮ LIỆU NASA EONET
-# ===============================
 class EONETFetcher:
     def __init__(self):
         self.base_url = "https://eonet.gsfc.nasa.gov/api/v3/events"
@@ -91,19 +149,19 @@ class EONETFetcher:
     def fetch_events(self, limit=10):
         params = {"status": "open", "limit": limit}
         try:
-            response = requests.get(self.base_url, params=params, timeout=10)
-            data = response.json()
+            r = requests.get(self.base_url, params=params, timeout=10)
+            data = r.json()
             events = []
-            for event in data.get("events", []):
-                categories = event.get("categories", [])
-                category = categories[0].get("title", "Unknown") if categories else "Unknown"
-                geometry = event.get("geometry", [{}])[0]
-                coords = geometry.get("coordinates", [])
-                date_str = geometry.get("date", "")
+            for ev in data.get("events", []):
+                categories = ev.get("categories", [])
+                cat = categories[0].get("title", "Unknown") if categories else "Unknown"
+                geom = ev.get("geometry", [{}])[0]
+                coords = geom.get("coordinates", [])
+                date_str = geom.get("date", "")
                 events.append({
-                    "title": event.get("title", "No title"),
-                    "category": category,
-                    "status": event.get("status", "unknown"),
+                    "title": ev.get("title", "No title"),
+                    "category": cat,
+                    "status": ev.get("status", "unknown"),
                     "latitude": coords[1] if len(coords) > 1 else None,
                     "longitude": coords[0] if len(coords) > 0 else None,
                     "date": datetime.fromisoformat(date_str.replace("Z", "+00:00")) if date_str else None
@@ -112,16 +170,14 @@ class EONETFetcher:
         except:
             return pd.DataFrame()
 
-# ===============================
-# MOCK EARTHQUAKES
-# ===============================
 def get_mock_earthquakes():
     now = datetime.now()
     data = []
+    places = ["Kon Tum", "Điện Biên", "Lào Cai", "Quảng Nam", "Nghệ An", "Thanh Hóa"]
     for i in range(5):
         data.append({
             "time": now - timedelta(hours=i*6),
-            "place": f"Cách {random.choice(['Kon Tum', 'Điện Biên', 'Lào Cai', 'Quảng Nam'])} {random.randint(10,50)} km",
+            "place": f"Cách {random.choice(places)} {random.randint(10,50)} km",
             "magnitude": round(random.uniform(3.0, 5.5), 1),
             "depth_km": round(random.uniform(5, 30), 1),
             "latitude": 14 + random.uniform(-3, 5),
@@ -130,7 +186,7 @@ def get_mock_earthquakes():
     return pd.DataFrame(data)
 
 # ===============================
-# TỌA ĐỘ TỈNH THÀNH (MỞ RỘNG 44 TỈNH)
+# TỌA ĐỘ TỈNH THÀNH
 # ===============================
 CITY_COORDS = {
     "Hà Nội": {"lat": 21.0285, "lon": 105.8542},
@@ -187,57 +243,58 @@ CITY_COORDS = {
 # ===============================
 # GIAO DIỆN STREAMLIT
 # ===============================
-st.set_page_config(page_title="CrowdMine-X", page_icon="🌍", layout="wide")
-st.title("🌍 CrowdMine-X")
-st.subheader("Hệ thống Cảnh báo Thiên tai Dây chuyền với AI và Cộng đồng")
+st.title("🌍 CrowdMine-X Pro")
+st.subheader("Hệ thống Cảnh báo Thiên tai Dây chuyền Thông minh")
 
+# ---- SIDEBAR ----
 with st.sidebar:
     st.header("📍 Khu vực")
-    region = st.selectbox("Chọn tỉnh/thành phố", list(CITY_COORDS.keys()))
-    days = st.slider("📅 Số ngày lấy dữ liệu động đất", 1, 30, 7)
-    min_mag = st.slider("📊 Độ lớn tối thiểu", 2.0, 6.0, 3.0, 0.5)
+    region = st.selectbox("Chọn tỉnh/thành phố", list(CITY_COORDS.keys()), key="region")
+    days = st.slider("📅 Số ngày lấy dữ liệu động đất", 1, 30, 7, key="days")
+    min_mag = st.slider("📊 Độ lớn tối thiểu", 2.0, 6.0, 3.0, 0.5, key="min_mag")
+    
     st.divider()
+    # Nút toggle theme
+    st.button("🌗 Chuyển chế độ sáng/tối", on_click=toggle_theme)
     st.caption(f"🔄 Cập nhật: {datetime.now().strftime('%H:%M %d/%m/%Y')}")
 
 coords = CITY_COORDS.get(region, {"lat": 21.0285, "lon": 105.8542})
 
-# ---- Thời tiết ----
+# ---- THỜI TIẾT ----
 weather_fetcher = WeatherFetcher()
 weather = weather_fetcher.get_current_weather(coords["lat"], coords["lon"])
 if weather:
-    col1, col2, col3, col4 = st.columns(4)
-    col1.metric("🌡️ Nhiệt độ", f"{weather['temperature']}°C")
-    col2.metric("💧 Độ ẩm", f"{weather['humidity']}%" if weather['humidity'] else "N/A")
-    col3.metric("🌧️ Lượng mưa", f"{weather['precipitation']} mm")
-    col4.metric("💨 Gió", f"{weather['wind_speed']} km/h" if weather['wind_speed'] else "N/A")
+    c1, c2, c3, c4 = st.columns(4)
+    c1.metric("🌡️ Nhiệt độ", f"{weather['temperature']}°C")
+    c2.metric("💧 Độ ẩm", f"{weather['humidity']}%" if weather['humidity'] else "N/A")
+    c3.metric("🌧️ Lượng mưa", f"{weather['precipitation']} mm")
+    c4.metric("💨 Gió", f"{weather['wind_speed']} km/h" if weather['wind_speed'] else "N/A")
 else:
-    st.warning("⚠️ Không thể lấy dữ liệu thời tiết.")
+    st.warning("⚠️ Không thể lấy dữ liệu thời tiết. Kiểm tra kết nối mạng.")
 
-# ===============================
-# TABS (Không LSTM)
-# ===============================
+# ---- TABS ----
 tab1, tab2, tab3, tab4 = st.tabs([
     "📊 Bảng điều khiển",
     "🗺️ Bản đồ rủi ro",
     "📢 Báo cáo cộng đồng",
     "⚠️ Cảnh báo dây chuyền"
 ])
-
-# ---- TAB 1 ----
+# ---- TAB 1: Bảng điều khiển ----
 with tab1:
     st.header("📋 Động đất gần đây")
     with st.spinner("📡 Đang tải dữ liệu từ USGS..."):
         fetcher = USGSFetcher()
-        df = fetcher.fetch_earthquakes(days=days, min_magnitude=min_mag)
-    if df.empty:
+        df_eq = fetcher.fetch_earthquakes(days=days, min_magnitude=min_mag)
+    if df_eq.empty:
         st.info("ℹ️ Không có dữ liệu thật. Hiển thị dữ liệu mô phỏng.")
-        df = get_mock_earthquakes()
-    st.dataframe(df[["time", "place", "magnitude", "depth_km"]], use_container_width=True)
+        df_eq = get_mock_earthquakes()
+    st.dataframe(df_eq[["time", "place", "magnitude", "depth_km"]], use_container_width=True)
     col1, col2, col3 = st.columns(3)
-    col1.metric("Số trận", len(df))
-    col2.metric("Độ lớn TB", f"{df['magnitude'].mean():.1f}")
-    col3.metric("Mạnh nhất", f"{df['magnitude'].max():.1f}")
-    st.bar_chart(df["magnitude"])
+    col1.metric("📌 Số trận", len(df_eq))
+    col2.metric("📊 Độ lớn TB", f"{df_eq['magnitude'].mean():.1f}")
+    col3.metric("🔝 Mạnh nhất", f"{df_eq['magnitude'].max():.1f}")
+    st.bar_chart(df_eq["magnitude"])
+    
     st.divider()
     st.subheader("🛰️ Sự kiện từ NASA EONET")
     with st.spinner("Đang tải..."):
@@ -248,44 +305,103 @@ with tab1:
     else:
         st.info("Không có sự kiện nào.")
 
-# ---- TAB 2 ----
+# ---- TAB 2: Bản đồ rủi ro ----
 with tab2:
-    st.header("🗺️ Bản đồ rủi ro")
-    map_data = pd.DataFrame({
-        "lat": [21.0285, 16.0544, 10.8231, 16.4637, 14.3493],
-        "lon": [105.8542, 108.2022, 106.6297, 107.5909, 108.0000],
-        "city": ["Hà Nội", "Đà Nẵng", "TP.HCM", "Huế", "Kon Tum"],
-        "risk": [3, 4, 2, 5, 4]
-    })
-    st.map(map_data, size="risk", zoom=6)
-    st.dataframe(map_data, use_container_width=True)
+    st.header("🗺️ Bản đồ tương tác - Động đất và Báo cáo cộng đồng")
+    # Tạo map
+    m = folium.Map(location=[16.0, 108.0], zoom_start=6, tiles="OpenStreetMap")
+    # Thêm điểm động đất
+    for _, row in df_eq.iterrows():
+        folium.CircleMarker(
+            location=[row["latitude"], row["longitude"]],
+            radius=row["magnitude"] * 1.5,
+            popup=f"Độ lớn {row['magnitude']} - {row['place']}",
+            color="red",
+            fill=True,
+            fillColor="orange",
+            fillOpacity=0.6
+        ).add_to(m)
+    # Thêm các điểm báo cáo từ file CSV (nếu có)
+    try:
+        df_reports = pd.read_csv("reports.csv")
+        for _, row in df_reports.iterrows():
+            if not pd.isna(row["latitude"]) and not pd.isna(row["longitude"]):
+                folium.Marker(
+                    location=[row["latitude"], row["longitude"]],
+                    popup=f"{row['type']}: {row['description']}",
+                    icon=folium.Icon(color="blue", icon="info-sign")
+                ).add_to(m)
+    except:
+        pass
+    st_folium(m, width=700, height=500)
 
-# ---- TAB 3 ----
+# ---- TAB 3: Báo cáo cộng đồng ----
 with tab3:
-    st.header("📢 Báo cáo cộng đồng")
+    st.header("📢 Gửi báo cáo cộng đồng")
     with st.form("report_form"):
         report_type = st.selectbox("Loại báo cáo", ["An toàn", "Nguy hiểm", "Hiện tượng lạ", "Thiệt hại"])
-        location = st.text_input("📍 Vị trí")
-        description = st.text_area("📝 Mô tả")
-        submitted = st.form_submit_button("Gửi báo cáo")
+        location = st.text_input("📍 Vị trí (tỉnh/thành phố)")
+        description = st.text_area("📝 Mô tả chi tiết")
+        lat = st.number_input("🧭 Vĩ độ (nếu biết)", value=0.0, format="%.4f")
+        lon = st.number_input("🧭 Kinh độ (nếu biết)", value=0.0, format="%.4f")
+        submitted = st.form_submit_button("📤 Gửi báo cáo")
         if submitted and location and description:
-            st.success("✅ Cảm ơn bạn!")
+            # Lưu vào file CSV
+            new_report = {
+                "time": datetime.now().strftime("%Y-%m-%d %H:%M"),
+                "type": report_type,
+                "location": location,
+                "description": description,
+                "latitude": lat if lat != 0.0 else None,
+                "longitude": lon if lon != 0.0 else None
+            }
+            try:
+                df_reports = pd.read_csv("reports.csv")
+                df_reports = pd.concat([df_reports, pd.DataFrame([new_report])], ignore_index=True)
+            except:
+                df_reports = pd.DataFrame([new_report])
+            df_reports.to_csv("reports.csv", index=False)
+            st.success("✅ Cảm ơn bạn đã gửi báo cáo!")
             st.balloons()
+    
+    st.divider()
+    st.subheader("📋 Các báo cáo gần đây")
+    try:
+        df_reports = pd.read_csv("reports.csv")
+        st.dataframe(df_reports.tail(10), use_container_width=True)
+    except:
+        st.info("Chưa có báo cáo nào. Hãy gửi báo cáo đầu tiên!")
 
-# ---- TAB 4 ----
+# ---- TAB 4: Cảnh báo dây chuyền ----
 with tab4:
-    st.header("⚠️ Dự báo dây chuyền")
-    st.error("""
-    🔴 **Cảnh báo Đỏ: Bão số 3**
-    - Đổ bộ vào Đà Nẵng – Quảng Nam trong 24h tới.
-    - **Tác động dây chuyền:**
-        - Lũ lụt: 85%
-        - Sạt lở: 70%
-        - Vỡ đê: 60%
-    - **Khuyến nghị:** Sơ tán khẩn cấp!
-    """)
-    st.warning("""
-    🟡 **Cảnh báo Vàng: Động đất 4.2 tại Kon Tum**
-    - Nguy cơ dư chấn: 40% trong 48h.
-    """)
-    st.info("🟢 Các khu vực khác: An toàn.")
+    st.header("⚠️ Phân tích rủi ro dây chuyền")
+    # Dựa trên dữ liệu thời tiết và động đất để đưa ra cảnh báo
+    if weather:
+        rain = weather.get("precipitation", 0)
+        wind = weather.get("wind_speed", 0)
+        # Logic đơn giản
+        if rain > 50 or wind > 50:
+            st.error("""
+            🔴 **Cảnh báo Đỏ: Nguy cơ cao**
+            - Mưa lớn / gió mạnh có thể gây lũ lụt, sạt lở.
+            - **Tác động dây chuyền:** Lũ quét, sạt lở đất, vỡ đê.
+            - **Khuyến nghị:** Sơ tán ngay các vùng trũng thấp!
+            """)
+        elif rain > 20 or wind > 30:
+            st.warning("""
+            🟡 **Cảnh báo Vàng: Nguy cơ trung bình**
+            - Thời tiết xấu, có thể gây ngập cục bộ.
+            - Theo dõi sát các bản tin thời tiết.
+            """)
+        else:
+            st.info("🟢 **An toàn:** Không có nguy cơ đặc biệt.")
+        
+        # Thông tin về động đất gần nhất
+        if not df_eq.empty:
+            latest = df_eq.iloc[0]
+            if latest["magnitude"] > 5.0:
+                st.warning(f"⚠️ Động đất {latest['magnitude']} tại {latest['place']} - Có thể gây dư chấn.")
+            else:
+                st.success(f"✅ Động đất nhẹ ({latest['magnitude']}) tại {latest['place']} - An toàn.")
+    else:
+        st.info("Không có dữ liệu thời tiết để phân tích.")
