@@ -4,8 +4,7 @@ import requests
 from datetime import datetime, timedelta
 import random
 import os
-import folium
-from streamlit_folium import st_folium
+import pydeck as pdk
 
 # ===============================
 # CẤU HÌNH PAGE
@@ -16,55 +15,29 @@ st.set_page_config(page_title="CrowdMine-X Pro", page_icon="🌍", layout="wide"
 if "theme" not in st.session_state:
     st.session_state.theme = "light"
 
-# Hàm toggle theme
 def toggle_theme():
     st.session_state.theme = "dark" if st.session_state.theme == "light" else "light"
 
 # ===============================
-# CSS TUỲ CHỈNH (Dark/Light)
+# CSS TUỲ CHỈNH
 # ===============================
 def apply_css(theme):
     if theme == "dark":
         st.markdown("""
         <style>
-            body, .stApp {
-                background-color: #1a1a2e;
-                color: #e0e0e0;
-            }
-            .sidebar .sidebar-content {
-                background-color: #16213e;
-            }
-            .stMetric {
-                background-color: #0f3460;
-                padding: 10px;
-                border-radius: 10px;
-                color: white;
-            }
-            .stDataFrame, .stDataFrame > div {
-                background-color: #16213e;
-                color: white;
-            }
-            h1, h2, h3, h4, h5, h6 {
-                color: #e0e0e0;
-            }
+            body, .stApp { background-color: #1a1a2e; color: #e0e0e0; }
+            .sidebar .sidebar-content { background-color: #16213e; }
+            .stMetric { background-color: #0f3460; padding: 10px; border-radius: 10px; color: white; }
+            .stDataFrame, .stDataFrame > div { background-color: #16213e; color: white; }
+            h1, h2, h3, h4, h5, h6 { color: #e0e0e0; }
         </style>
         """, unsafe_allow_html=True)
     else:
         st.markdown("""
         <style>
-            body, .stApp {
-                background-color: #f5f7fa;
-                color: #1a1a2e;
-            }
-            .sidebar .sidebar-content {
-                background-color: #ffffff;
-            }
-            .stMetric {
-                background-color: #e8f0fe;
-                padding: 10px;
-                border-radius: 10px;
-                color: #1a1a2e;
-            }
+            body, .stApp { background-color: #f5f7fa; color: #1a1a2e; }
+            .sidebar .sidebar-content { background-color: #ffffff; }
+            .stMetric { background-color: #e8f0fe; padding: 10px; border-radius: 10px; color: #1a1a2e; }
         </style>
         """, unsafe_allow_html=True)
 
@@ -246,13 +219,11 @@ CITY_COORDS = {
 st.title("🌍 CrowdMine-X Pro")
 st.subheader("Hệ thống Cảnh báo Thiên tai Dây chuyền Thông minh")
 
-# ---- SIDEBAR ----
 with st.sidebar:
     st.header("📍 Khu vực")
     region = st.selectbox("Chọn tỉnh/thành phố", list(CITY_COORDS.keys()), key="region")
     days = st.slider("📅 Số ngày lấy dữ liệu động đất", 1, 30, 7, key="days")
     min_mag = st.slider("📊 Độ lớn tối thiểu", 2.0, 6.0, 3.0, 0.5, key="min_mag")
-    
     st.divider()
     st.button("🌗 Chuyển chế độ sáng/tối", on_click=toggle_theme)
     st.caption(f"🔄 Cập nhật: {datetime.now().strftime('%H:%M %d/%m/%Y')}")
@@ -269,9 +240,8 @@ if weather:
     c3.metric("🌧️ Lượng mưa", f"{weather['precipitation']} mm")
     c4.metric("💨 Gió", f"{weather['wind_speed']} km/h" if weather['wind_speed'] else "N/A")
 else:
-    st.warning("⚠️ Không thể lấy dữ liệu thời tiết. Kiểm tra kết nối mạng.")
+    st.warning("⚠️ Không thể lấy dữ liệu thời tiết.")
 
-# ---- TABS ----
 tab1, tab2, tab3, tab4 = st.tabs([
     "📊 Bảng điều khiển",
     "🗺️ Bản đồ rủi ro",
@@ -279,12 +249,12 @@ tab1, tab2, tab3, tab4 = st.tabs([
     "⚠️ Cảnh báo dây chuyền"
 ])
 
-# ---- TAB 1: Bảng điều khiển ----
+# ---- TAB 1 ----
 with tab1:
     st.header("📋 Động đất gần đây")
     with st.spinner("📡 Đang tải dữ liệu từ USGS..."):
         fetcher = USGSFetcher()
-        df_eq = fetcher.fetch_earthquakes(days=days, min_mag=min_mag)  # ĐÃ SỬA
+        df_eq = fetcher.fetch_earthquakes(days=days, min_mag=min_mag)
     if df_eq.empty:
         st.info("ℹ️ Không có dữ liệu thật. Hiển thị dữ liệu mô phỏng.")
         df_eq = get_mock_earthquakes()
@@ -294,7 +264,6 @@ with tab1:
     col2.metric("📊 Độ lớn TB", f"{df_eq['magnitude'].mean():.1f}")
     col3.metric("🔝 Mạnh nhất", f"{df_eq['magnitude'].max():.1f}")
     st.bar_chart(df_eq["magnitude"])
-    
     st.divider()
     st.subheader("🛰️ Sự kiện từ NASA EONET")
     with st.spinner("Đang tải..."):
@@ -305,34 +274,37 @@ with tab1:
     else:
         st.info("Không có sự kiện nào.")
 
-# ---- TAB 2: Bản đồ rủi ro ----
+# ---- TAB 2: Bản đồ (dùng pydeck) ----
 with tab2:
-    st.header("🗺️ Bản đồ tương tác - Động đất và Báo cáo cộng đồng")
-    m = folium.Map(location=[16.0, 108.0], zoom_start=6, tiles="OpenStreetMap")
-    for _, row in df_eq.iterrows():
-        folium.CircleMarker(
-            location=[row["latitude"], row["longitude"]],
-            radius=row["magnitude"] * 1.5,
-            popup=f"Độ lớn {row['magnitude']} - {row['place']}",
-            color="red",
-            fill=True,
-            fillColor="orange",
-            fillOpacity=0.6
-        ).add_to(m)
-    try:
-        df_reports = pd.read_csv("reports.csv")
-        for _, row in df_reports.iterrows():
-            if not pd.isna(row["latitude"]) and not pd.isna(row["longitude"]):
-                folium.Marker(
-                    location=[row["latitude"], row["longitude"]],
-                    popup=f"{row['type']}: {row['description']}",
-                    icon=folium.Icon(color="blue", icon="info-sign")
-                ).add_to(m)
-    except:
-        pass
-    st_folium(m, width=700, height=500)
+    st.header("🗺️ Bản đồ tương tác - Động đất và Báo cáo")
+    if not df_eq.empty:
+        # Tạo layer cho các điểm động đất
+        layer = pdk.Layer(
+            "ScatterplotLayer",
+            data=df_eq,
+            get_position=["longitude", "latitude"],
+            get_radius="magnitude * 2000",
+            get_fill_color=[255, 0, 0, 180],
+            pickable=True,
+            auto_highlight=True,
+            radius_scale=1,
+        )
+        view_state = pdk.ViewState(
+            latitude=16.0,
+            longitude=108.0,
+            zoom=6,
+            pitch=0,
+        )
+        chart = pdk.Deck(
+            layers=[layer],
+            initial_view_state=view_state,
+            tooltip={"text": "Độ lớn {magnitude}\n{place}"}
+        )
+        st.pydeck_chart(chart)
+    else:
+        st.info("Không có dữ liệu để hiển thị trên bản đồ.")
 
-# ---- TAB 3: Báo cáo cộng đồng ----
+# ---- TAB 3 ----
 with tab3:
     st.header("📢 Gửi báo cáo cộng đồng")
     with st.form("report_form"):
@@ -366,9 +338,9 @@ with tab3:
         df_reports = pd.read_csv("reports.csv")
         st.dataframe(df_reports.tail(10), use_container_width=True)
     except:
-        st.info("Chưa có báo cáo nào. Hãy gửi báo cáo đầu tiên!")
+        st.info("Chưa có báo cáo nào.")
 
-# ---- TAB 4: Cảnh báo dây chuyền ----
+# ---- TAB 4 ----
 with tab4:
     st.header("⚠️ Phân tích rủi ro dây chuyền")
     if weather:
