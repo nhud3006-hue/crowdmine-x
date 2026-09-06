@@ -4,5 +4,3 @@ numpy
 matplotlib
 requests
 scikit-learn
-tensorflow
-joblib
