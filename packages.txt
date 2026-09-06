@@ -1,2 +1,3 @@
-gcc
-g++
+git add .
+git commit -m "Remove LSTM import completely"
+git push
